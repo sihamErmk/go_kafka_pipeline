@@ -1,0 +1,14 @@
+{
+  "namespace": "com.example.kafka.avro",
+  "type": "record",
+  "name": "SeedStatusAvro",
+  "fields": [
+    { "name": "dateTimestamp", "type": "long" },
+    { "name": "response", "type": ["string", "null"] },
+    { "name": "status", "type": ["string", "null"] },
+    { "name": "seedId", "type": ["int", "null"] },
+    { "name": "subScenarioId", "type": ["int", "null"] },
+    { "name": "scenarioId", "type": ["int", "null"] },
+    { "name": "scriptId", "type": ["int", "null"] }
+  ]
+}
