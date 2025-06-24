@@ -3,7 +3,7 @@ package avro
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"os"
 
 	"github.com/linkedin/goavro/v2"
 )
@@ -15,7 +15,7 @@ type Deserializer struct {
 
 // NewDeserializer creates a new Avro deserializer with the schema
 func NewDeserializer(schemaPath string) (*Deserializer, error) {
-	schemaBytes, err := ioutil.ReadFile(schemaPath)
+	schemaBytes, err := os.ReadFile(schemaPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read schema file: %w", err)
 	}
@@ -67,7 +67,7 @@ type Serializer struct {
 
 // NewSerializer creates a new Avro serializer with the schema
 func NewSerializer(schemaPath string) (*Serializer, error) {
-	schemaBytes, err := ioutil.ReadFile(schemaPath)
+	schemaBytes, err := os.ReadFile(schemaPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read schema file: %w", err)
 	}
