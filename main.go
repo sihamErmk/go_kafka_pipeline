@@ -3,6 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	consumer "go_kafka_pipeline/internalconsumer"
+	database "go_kafka_pipeline/internaldatabase"
+	handler "go_kafka_pipeline/internalhandler"
+	metrics "go_kafka_pipeline/internalmetrics"
+	avro "go_kafka_pipeline/pkg/avro"
 	"log"
 	"net/http"
 	"os"
@@ -10,12 +15,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
-	"go_kafka_pipeline/handler"
-	"go_kafka_pipeline/internalconsumer"
-	"go_kafka_pipeline/internaldatabase"
-	"go_kafka_pipeline/internalmetrics"
-	"go_kafka_pipeline/pkgavro"
 
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
@@ -83,10 +82,10 @@ func main() {
 	var wg sync.WaitGroup
 
 	// Initialize components
-	metrics := internalmetrics.NewMetrics()
-	
+	appMetrics := metrics.NewMetrics()
+
 	// Initialize database writer
-	dbWriter, err := internaldatabase.NewPostgresWriter(cfg.DatabaseURL, logger)
+	dbWriter, err := database.NewPostgresWriter(cfg.DatabaseURL, logger)
 	if err != nil {
 		logger.Fatal("Failed to initialize database writer", zap.Error(err))
 	}
@@ -98,16 +97,16 @@ func main() {
 	}
 
 	// Initialize Avro deserializer
-	deserializer, err := pkgavro.NewDeserializer("schema/seed_status.avsc")
+	deserializer, err := avro.NewDeserializer("schema/seed_status.avsc")
 	if err != nil {
 		logger.Fatal("Failed to initialize Avro deserializer", zap.Error(err))
 	}
 
 	// Initialize message handler
-	messageHandler := handler.NewMessageHandler(dbWriter, deserializer, metrics, logger)
+	messageHandler := handler.NewMessageHandler(dbWriter, deserializer, appMetrics, logger)
 
 	// Initialize Kafka consumer
-	consumerConfig := internalconsumer.Config{
+	consumerConfig := consumer.Config{
 		Brokers:           []string{cfg.KafkaBrokers},
 		Topic:             cfg.KafkaTopic,
 		GroupID:           cfg.KafkaGroupID,
@@ -117,7 +116,7 @@ func main() {
 		HeartbeatInterval: 3 * time.Second,
 	}
 
-	kafkaConsumer, err := internalconsumer.NewKafkaConsumer(consumerConfig, messageHandler, logger)
+	kafkaConsumer, err := consumer.NewKafkaConsumer(consumerConfig, messageHandler, logger)
 	if err != nil {
 		logger.Fatal("Failed to initialize Kafka consumer", zap.Error(err))
 	}
@@ -129,20 +128,20 @@ func main() {
 	defer kafkaConsumer.Stop()
 
 	// Set initial metrics
-	metrics.SetActiveWorkers(cfg.ConsumerWorkers)
-	
+	appMetrics.SetActiveWorkers(cfg.ConsumerWorkers)
+
 	// Start metrics monitoring goroutine
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
-		
+
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
 				stats := dbWriter.GetStats()
-				metrics.SetDatabaseConnections(int(stats.AcquiredConns()))
+				appMetrics.SetDatabaseConnections(int(stats.AcquiredConns()))
 			}
 		}
 	}()
@@ -162,7 +161,7 @@ func main() {
 	}
 
 	cancel() // Cancel context for all goroutines
-	
+
 	// Stop Kafka consumer gracefully
 	logger.Info("Stopping Kafka consumer...")
 	if err := kafkaConsumer.Stop(); err != nil {
@@ -170,7 +169,7 @@ func main() {
 	} else {
 		logger.Info("Kafka consumer stopped successfully")
 	}
-	
+
 	wg.Wait() // Wait for all workers to finish
 
 	logger.Info("Application shutdown complete")
@@ -202,7 +201,7 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 
 func sendTestDataHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	// Parse query parameters
 	count := 10000 // default
 	if countStr := r.URL.Query().Get("count"); countStr != "" {
